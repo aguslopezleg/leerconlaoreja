@@ -9,15 +9,44 @@ from extract_text import extract_pdf_text
 from generate_thumbnail import generate_thumbnail
 from generate_subtitles import generate_subtitles
 from generate_tts import generate_tts
-from models import Paths
+from models import Paths, ScheduledJob
 from render_video import render_video
+from scheduler import (
+    add_job,
+    list_jobs,
+    mark_failed,
+    mark_running,
+    mark_succeeded,
+    organize_queue,
+    pending_jobs,
+    reset_failed_jobs,
+)
 from summarize import create_master_summary, summarize_chunks
+from telegram_notify import send_telegram
 from upload_youtube import generate_youtube_metadata_with_ai, upload_video_to_youtube
 from utils import file_info, format_duration, log, ensure_dirs, load_config, project_root, timed, word_count
 from write_script import write_final_script, write_visual_production
 
 
-STEPS = {"all", "extract", "summarize", "script", "tts", "subtitles", "render", "thumbnail", "youtube", "publish"}
+STEPS = {
+    "all",
+    "extract",
+    "summarize",
+    "script",
+    "tts",
+    "subtitles",
+    "render",
+    "thumbnail",
+    "youtube",
+    "publish",
+    "schedule-add",
+    "schedule-organize",
+    "schedule-list",
+    "schedule-run",
+    "schedule-tick",
+    "schedule-reset-failed",
+    "telegram-test",
+}
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -34,17 +63,20 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--youtube-tags", default=None, help="Tags separados por coma para YouTube.")
     parser.add_argument("--privacy-status", choices=["private", "public", "unlisted"], default=None)
     parser.add_argument("--youtube-dry-run", action="store_true", help="Muestra metadata sin subir el video.")
+    parser.add_argument("--schedule-limit", type=int, default=None, help="Máximo de trabajos pending a procesar.")
+    parser.add_argument("--schedule-no-publish", action="store_true", help="El trabajo programado genera video pero no sube a YouTube.")
+    parser.add_argument("--schedule-all-pending", action="store_true", help="Procesa también trabajos pending aunque aún no llegue scheduled_for.")
     parser.add_argument("--config", default="config.yaml", help="Ruta a config.yaml.")
     parser.add_argument("--force", action="store_true", help="Regenera archivos aunque existan en cache.")
     return parser
 
 
-def resolve_paths(pdf_arg: str) -> Paths:
+def resolve_paths(pdf_arg: str, output_root: Path | None = None) -> Paths:
     root = project_root()
     pdf = Path(pdf_arg)
     if not pdf.is_absolute():
         pdf = root / pdf
-    return Paths.from_root(root, pdf)
+    return Paths.from_root(root, pdf, output_root)
 
 
 def prepare(paths: Paths) -> None:
@@ -152,7 +184,7 @@ def run_youtube(
     privacy_status: str | None,
     dry_run: bool,
     force: bool,
-) -> None:
+) -> str | None:
     log("Subiendo video a YouTube...")
     upload_config = config
     if privacy_status:
@@ -160,7 +192,7 @@ def run_youtube(
     tags = [tag.strip() for tag in youtube_tags.split(",")] if youtube_tags else None
     upload_title = youtube_title or title
     with timed("Paso youtube"):
-        upload_video_to_youtube(
+        response = upload_video_to_youtube(
             video_path=paths.video_dir / "final_video.mp4",
             title=upload_title,
             config=upload_config,
@@ -170,7 +202,12 @@ def run_youtube(
             tags=tags,
             dry_run=dry_run,
             force_metadata=force,
+            thumbnail_path=paths.video_dir / "thumbnail.jpg",
         )
+    video_id = response.get("id") if isinstance(response, dict) else None
+    if video_id:
+        return f"https://www.youtube.com/watch?v={video_id}"
+    return None
 
 
 def run_thumbnail(paths: Paths, config, title: str, force: bool) -> None:
@@ -195,8 +232,100 @@ def run_thumbnail(paths: Paths, config, title: str, force: bool) -> None:
             config=config,
             metadata_path=metadata_path,
             master_summary_path=paths.summaries_dir / "master_summary.json",
+            output_path=paths.video_dir / "thumbnail.jpg",
             force=force,
         )
+
+
+def run_full_pipeline(
+    paths: Paths,
+    config,
+    title: str,
+    force: bool,
+    publish: bool = False,
+    preview_seconds: float | None = None,
+    youtube_title: str | None = None,
+    youtube_description: str | None = None,
+    youtube_tags: str | None = None,
+    privacy_status: str | None = None,
+    youtube_dry_run: bool = False,
+) -> str | None:
+    run_extract(paths, config.chunk_size_chars, force)
+    run_summarize(paths, config, force)
+    run_script(paths, config, title, force)
+    run_tts(paths, config, force)
+    run_subtitles(paths, config, force)
+    run_render(paths, config, title, force, preview_seconds)
+    if preview_seconds:
+        log("Preview generado; se omite miniatura y YouTube.")
+        return None
+    run_thumbnail(paths, config, title, force)
+    if publish:
+        return run_youtube(
+            paths,
+            config,
+            title,
+            youtube_title,
+            youtube_description,
+            youtube_tags,
+            privacy_status,
+            youtube_dry_run,
+            force,
+        )
+    return None
+
+
+def run_scheduled_job(job: ScheduledJob, config, config_duration: int | None = None) -> str | None:
+    job_config = config.model_copy(update={"target_duration_minutes": config_duration or job.duration})
+    output_root = project_root() / job.output_root if job.output_root else project_root() / "output" / "jobs" / job.job_id
+    paths = resolve_paths(job.pdf, output_root=output_root)
+    prepare(paths)
+    return run_full_pipeline(
+        paths=paths,
+        config=job_config,
+        title=job.title,
+        force=job.force,
+        publish=job.publish,
+        youtube_title=job.youtube_title,
+        youtube_description=job.youtube_description,
+        youtube_tags=job.youtube_tags,
+        privacy_status=job.privacy_status,
+        youtube_dry_run=job.youtube_dry_run,
+    )
+
+
+def run_scheduler(config, limit: int | None = None, due_only: bool = True) -> None:
+    jobs = pending_jobs(limit, due_only=due_only)
+    if not jobs:
+        log("Scheduler: no hay trabajos pending para ejecutar ahora.")
+        return
+    log(f"Scheduler: procesando {len(jobs)} trabajo(s) pending.")
+    for job in jobs:
+        log(f"Scheduler: iniciando {job.job_id} | {job.title}")
+        running_job = mark_running(job)
+        send_telegram(
+            f"Leer con la Oreja\nIniciando trabajo: {running_job.title}\nID: {running_job.job_id}",
+            config,
+            silent=True,
+        )
+        try:
+            youtube_url = run_scheduled_job(running_job, config)
+        except Exception as exc:
+            mark_failed(running_job, exc)
+            log(f"Scheduler: trabajo falló {running_job.job_id}: {exc}", level="ERROR")
+            send_telegram(
+                f"Leer con la Oreja\nFallo: {running_job.title}\nID: {running_job.job_id}\nError: {exc}",
+                config,
+            )
+            continue
+        mark_succeeded(running_job, youtube_url)
+        log(f"Scheduler: trabajo listo {running_job.job_id}")
+        message = f"Leer con la Oreja\nVideo listo: {running_job.title}\nID: {running_job.job_id}"
+        if youtube_url:
+            message += f"\n{youtube_url}"
+        elif running_job.youtube_dry_run:
+            message += "\nDry-run: no se subió a YouTube."
+        send_telegram(message, config)
 
 
 def log_outputs(command: str, paths: Paths, preview_seconds: float | None = None, dry_run: bool = False) -> None:
@@ -234,6 +363,8 @@ def log_outputs(command: str, paths: Paths, preview_seconds: float | None = None
         label = "Video listo para YouTube" if dry_run else "Video usado para publish"
         log(f"{label}: {file_info(paths.video_dir / 'final_video.mp4')}")
         log(f"Miniatura usada: {file_info(project_root() / 'output' / 'video' / 'thumbnail.jpg')}")
+        return
+    if command.startswith("schedule") or command == "telegram-test":
         return
 
     log(f"Salidas principales: guion={file_info(paths.scripts_dir / 'final_script.txt')}")
@@ -305,32 +436,63 @@ def main() -> int:
         elif args.command == "publish":
             if args.preview_seconds:
                 raise RuntimeError("publish siempre sube final_video.mp4; no uses --preview-seconds con publish.")
-            run_extract(paths, config.chunk_size_chars, args.force)
-            run_summarize(paths, config, args.force)
-            run_script(paths, config, title, args.force)
-            run_tts(paths, config, args.force)
-            run_subtitles(paths, config, args.force)
-            run_render(paths, config, title, args.force, None)
-            run_thumbnail(paths, config, title, args.force)
-            run_youtube(
+            run_full_pipeline(
                 paths,
                 config,
                 title,
-                args.youtube_title,
-                args.youtube_description,
-                args.youtube_tags,
-                args.privacy_status,
-                args.youtube_dry_run,
                 args.force,
+                publish=True,
+                preview_seconds=None,
+                youtube_title=args.youtube_title,
+                youtube_description=args.youtube_description,
+                youtube_tags=args.youtube_tags,
+                privacy_status=args.privacy_status,
+                youtube_dry_run=args.youtube_dry_run,
             )
+        elif args.command == "schedule-add":
+            if not paths.pdf.exists():
+                raise FileNotFoundError(f"No se encontró el PDF para programar: {paths.pdf}")
+            add_job(
+                pdf=args.pdf,
+                title=title,
+                duration=config.target_duration_minutes,
+                publish=not args.schedule_no_publish,
+                youtube_dry_run=args.youtube_dry_run,
+                force=args.force,
+                privacy_status=args.privacy_status,
+                youtube_title=args.youtube_title,
+                youtube_description=args.youtube_description,
+                youtube_tags=args.youtube_tags,
+            )
+        elif args.command == "schedule-list":
+            list_jobs()
+        elif args.command == "schedule-reset-failed":
+            reset_failed_jobs()
+        elif args.command == "schedule-run":
+            if args.preview_seconds:
+                raise RuntimeError("schedule-run procesa videos finales; no uses --preview-seconds.")
+            run_scheduler(config, args.schedule_limit, due_only=not args.schedule_all_pending)
+        elif args.command == "schedule-organize":
+            created = organize_queue(config)
+            if created:
+                send_telegram(
+                    f"Leer con la Oreja\nPlan editorial actualizado: {len(created)} trabajo(s) nuevo(s).",
+                    config,
+                    silent=True,
+                )
+        elif args.command == "schedule-tick":
+            if args.preview_seconds:
+                raise RuntimeError("schedule-tick procesa videos finales; no uses --preview-seconds.")
+            organize_queue(config)
+            run_scheduler(config, args.schedule_limit, due_only=True)
+        elif args.command == "telegram-test":
+            sent = send_telegram("Leer con la Oreja\nPrueba de notificaciones OK.", config)
+            if sent:
+                log("Telegram test enviado.")
+            else:
+                log("Telegram no está habilitado o no pudo enviarse.", level="WARN")
         else:
-            run_extract(paths, config.chunk_size_chars, args.force)
-            run_summarize(paths, config, args.force)
-            run_script(paths, config, title, args.force)
-            run_tts(paths, config, args.force)
-            run_subtitles(paths, config, args.force)
-            run_render(paths, config, title, args.force, args.preview_seconds)
-            run_thumbnail(paths, config, title, args.force)
+            run_full_pipeline(paths, config, title, args.force, publish=False, preview_seconds=args.preview_seconds)
         elapsed = time.perf_counter() - started
         log(f"Pipeline terminada en {format_duration(elapsed)}")
         log_outputs(args.command, paths, args.preview_seconds, args.youtube_dry_run)

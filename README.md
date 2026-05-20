@@ -112,6 +112,144 @@ Usa `--force` para regenerar aunque existan archivos cacheados:
 python src/main.py script --title "Nombre del libro" --force
 ```
 
+## Scheduler Local
+
+El scheduler funciona como administrador local del canal. Puede mirar una carpeta de PDFs, armar un calendario editorial cada 3 días, generar el video cuando corresponda, subirlo a YouTube y notificar por Telegram.
+
+Carpeta de PDFs pendientes:
+
+```bash
+input/queue/
+```
+
+Cola/plan editorial persistente:
+
+```bash
+output/scheduler/jobs.json
+```
+
+Ese archivo guarda qué PDF procesar, título, fecha programada, duración, estado, intentos, errores, URL de YouTube y timestamps. Como está dentro de `output/`, no se sube a Git.
+
+Config:
+
+```yaml
+scheduler_queue_dir: input/queue
+scheduler_interval_days: 3
+scheduler_publish_time: "09:00"
+scheduler_default_publish: true
+telegram_notifications_enabled: false
+```
+
+Organizar PDFs nuevos y asignarles fecha cada 3 días:
+
+```bash
+python src/main.py schedule-organize
+```
+
+Ejecutar el administrador como lo haría cron:
+
+```bash
+python src/main.py schedule-tick
+```
+
+`schedule-tick` hace dos cosas:
+
+1. Escanea `input/queue/` y agrega PDFs nuevos al calendario.
+2. Ejecuta trabajos `pending` cuya fecha `scheduled_for` ya llegó.
+
+Agregar un trabajo que genere todo y suba a YouTube:
+
+```bash
+python src/main.py schedule-add --pdf input/book.pdf --title "Nombre del libro" --duration 20
+```
+
+Agregar un trabajo que genere el video pero no publique:
+
+```bash
+python src/main.py schedule-add --pdf input/book.pdf --title "Nombre del libro" --duration 20 --schedule-no-publish
+```
+
+Agregar un trabajo de prueba que llega hasta YouTube en dry-run:
+
+```bash
+python src/main.py schedule-add --pdf input/book.pdf --title "Nombre del libro" --duration 20 --youtube-dry-run
+```
+
+Ver la cola:
+
+```bash
+python src/main.py schedule-list
+```
+
+Ejecutar todos los trabajos pendientes:
+
+```bash
+python src/main.py schedule-run
+```
+
+Ejecutar solo un trabajo pendiente:
+
+```bash
+python src/main.py schedule-run --schedule-limit 1
+```
+
+Forzar ejecución de cualquier trabajo pendiente aunque su fecha futura no haya llegado:
+
+```bash
+python src/main.py schedule-run --schedule-all-pending
+```
+
+Reintentar trabajos fallidos:
+
+```bash
+python src/main.py schedule-reset-failed
+python src/main.py schedule-run
+```
+
+El scheduler procesa los trabajos en orden y marca cada uno como:
+
+- `pending`
+- `running`
+- `succeeded`
+- `failed`
+
+Si un trabajo falla, guarda el error en `last_error` y sigue con el siguiente.
+
+Para correrlo diariamente con cron, por ejemplo a las 9 AM:
+
+```cron
+0 9 * * * cd /ruta/a/notebook_style_video && .venv/bin/python src/main.py schedule-tick >> output/scheduler/cron.log 2>&1
+```
+
+## Telegram
+
+El administrador puede avisar por Telegram cuando:
+
+- empieza un trabajo
+- un video queda listo
+- se sube un video y hay URL
+- falla un trabajo
+- se actualiza el plan editorial
+
+Crea un bot con BotFather y configura `.env`:
+
+```bash
+TELEGRAM_BOT_TOKEN=123456:token
+TELEGRAM_CHAT_ID=123456789
+```
+
+Activa notificaciones:
+
+```yaml
+telegram_notifications_enabled: true
+```
+
+Prueba el bot:
+
+```bash
+python src/main.py telegram-test
+```
+
 ## Preview De 1 Minuto
 
 Para revisar cómo va quedando el video sin renderizar todo:

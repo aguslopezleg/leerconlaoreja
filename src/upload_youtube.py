@@ -214,6 +214,7 @@ def upload_video_to_youtube(
     if not video_path.exists():
         raise FileNotFoundError(f"No se encontró el video para subir: {video_path}")
 
+    metadata_path = script_path.parent / "youtube_metadata.json"
     metadata = build_youtube_metadata(
         title=title,
         config=config,
@@ -221,7 +222,7 @@ def upload_video_to_youtube(
         script_path=script_path,
         override_description=description,
         override_tags=tags,
-        ai_metadata_path=project_root() / "output" / "scripts" / "youtube_metadata.json",
+        ai_metadata_path=metadata_path,
         force=force_metadata,
     )
     log(f"Video para YouTube: {file_info(video_path)}")
@@ -231,7 +232,7 @@ def upload_video_to_youtube(
     thumbnail_path = generate_thumbnail(
         title=metadata["snippet"]["title"],
         config=config,
-        metadata_path=project_root() / "output" / "scripts" / "youtube_metadata.json",
+        metadata_path=metadata_path,
         master_summary_path=master_summary_path,
         output_path=thumbnail_path,
         force=force_metadata,

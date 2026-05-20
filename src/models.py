@@ -3,6 +3,7 @@ from __future__ import annotations
 from enum import Enum
 from pathlib import Path
 from typing import Any
+from datetime import datetime
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
@@ -57,6 +58,11 @@ class Config(BaseModel):
     thumbnail_text_source: str = "thumbnail_text"
     thumbnail_width: int = 1280
     thumbnail_height: int = 720
+    scheduler_queue_dir: str = "input/queue"
+    scheduler_interval_days: int = 3
+    scheduler_publish_time: str = "09:00"
+    scheduler_default_publish: bool = True
+    telegram_notifications_enabled: bool = False
     youtube_tags: list[str] = Field(
         default_factory=lambda: [
             "libros",
@@ -103,6 +109,18 @@ class Config(BaseModel):
             raise ValueError(f"Debe ser uno de: {', '.join(sorted(allowed))}")
         return normalized
 
+    @field_validator("scheduler_publish_time")
+    @classmethod
+    def valid_scheduler_publish_time(cls, value: str) -> str:
+        normalized = value.strip()
+        parts = normalized.split(":")
+        if len(parts) != 2:
+            raise ValueError("Debe tener formato HH:MM")
+        hour, minute = int(parts[0]), int(parts[1])
+        if hour < 0 or hour > 23 or minute < 0 or minute > 59:
+            raise ValueError("Debe tener formato HH:MM válido")
+        return f"{hour:02}:{minute:02}"
+
     @field_validator(
         "target_duration_minutes",
         "min_video_duration_minutes",
@@ -118,6 +136,7 @@ class Config(BaseModel):
         "thumbnail_height",
         "fps",
         "openai_max_output_tokens_script",
+        "scheduler_interval_days",
     )
     @classmethod
     def must_be_positive(cls, value: int) -> int:
@@ -235,8 +254,8 @@ class Paths(BaseModel):
     video_dir: Path
 
     @classmethod
-    def from_root(cls, project_root: Path, pdf: Path) -> "Paths":
-        output = project_root / "output"
+    def from_root(cls, project_root: Path, pdf: Path, output_root: Path | None = None) -> "Paths":
+        output = output_root or project_root / "output"
         return cls(
             project_root=project_root,
             pdf=pdf,
@@ -251,3 +270,39 @@ class Paths(BaseModel):
 
 
 JsonDict = dict[str, Any]
+
+
+class ScheduledJobStatus(str, Enum):
+    pending = "pending"
+    running = "running"
+    succeeded = "succeeded"
+    failed = "failed"
+
+
+class ScheduledJob(BaseModel):
+    job_id: str
+    pdf: str
+    title: str
+    duration: int = 20
+    scheduled_for: datetime | None = None
+    pdf_fingerprint: str | None = None
+    output_root: str | None = None
+    publish: bool = True
+    youtube_dry_run: bool = False
+    force: bool = False
+    privacy_status: str | None = None
+    youtube_title: str | None = None
+    youtube_description: str | None = None
+    youtube_tags: str | None = None
+    status: ScheduledJobStatus = ScheduledJobStatus.pending
+    attempts: int = 0
+    created_at: datetime = Field(default_factory=datetime.now)
+    updated_at: datetime = Field(default_factory=datetime.now)
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
+    last_error: str | None = None
+    youtube_url: str | None = None
+
+
+class SchedulerState(BaseModel):
+    jobs: list[ScheduledJob] = Field(default_factory=list)

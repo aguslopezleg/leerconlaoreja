@@ -8,6 +8,7 @@ __pycache__/
 
 input/youtube_client_secret.json
 input/*.pdf
+input/**/*.pdf
 input/music.mp3
 input/thumbnail_subject.jpg
 
