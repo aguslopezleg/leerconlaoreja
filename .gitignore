@@ -1,0 +1,14 @@
+.env
+.DS_Store
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+input/youtube_client_secret.json
+input/*.pdf
+input/music.mp3
+input/thumbnail_subject.jpg
+
+output/

@@ -1,0 +1,55 @@
+openai_model_summary: gpt-4o-mini
+openai_model_script: gpt-4o
+openai_model_visual: gpt-4o-mini
+openai_model_youtube_metadata: gpt-4o-mini
+openai_max_output_tokens_script: 12000
+tts_provider: openai
+tts_model: gpt-4o-mini-tts
+tts_voice: echo
+tts_instructions: "Leé este texto con estilo de audiolibro: voz cálida, ritmo pausado y natural, buena dicción, pausas expresivas y tono envolvente. Narrá como si estuvieras contando una historia íntima, con emoción sutil y sin sobreactuar."
+target_duration_minutes: 20
+min_video_duration_minutes: 10
+max_video_duration_minutes: 20
+words_per_minute: 150
+chunk_size_chars: 32000
+rolling_context_max_chars: 6000
+use_whisper_subtitles: true
+subtitle_alignment_mode: whisperx
+whisper_model: small
+whisperx_model: small
+whisperx_device: cpu
+whisperx_compute_type: int8
+whisperx_batch_size: 8
+subtitle_max_chars: 58
+subtitle_max_duration_seconds: 5.5
+enable_ai_images: false
+enable_background_music: true
+background_music_path: input/music.mp3
+background_music_volume_db: -34
+music_fade_seconds: 4
+video_width: 1920
+video_height: 1080
+fps: 30
+brand_name: Leer con la Oreja
+output_language: español neutro
+youtube_privacy_status: unlisted
+youtube_category_id: "27"
+youtube_default_language: es
+youtube_made_for_kids: false
+youtube_contains_synthetic_media: false
+youtube_license: youtube
+thumbnail_path: output/video/thumbnail.jpg
+thumbnail_subject_path: input/thumbnail_subject.jpg
+thumbnail_use_ai: true
+thumbnail_image_model: gpt-image-1.5
+thumbnail_image_quality: medium
+thumbnail_image_size: 1536x1024
+thumbnail_text_source: thumbnail_text
+thumbnail_width: 1280
+thumbnail_height: 720
+youtube_tags:
+  - libros
+  - audiolibro
+  - resumen de libros
+  - desarrollo personal
+  - Leer con la Oreja
