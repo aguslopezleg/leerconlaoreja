@@ -1,8 +1,23 @@
-# Notebook Style Video
+# Leer con la Oreja
 
-MVP local en Python para convertir un PDF de un libro en un video MP4 tipo audio overview / video podcast visualizado, con una sola voz, subtítulos, fondo visual simple y frases clave en pantalla.
+MVP local en Python para convertir un PDF de un libro en un video MP4 estilo audio overview / video podcast visualizado, con una sola voz, subtítulos, fondo visual, frases clave, miniatura y subida opcional a YouTube.
 
-El foco del proyecto es bajo costo, automatización y claridad narrativa. Por defecto no genera imágenes IA.
+El proyecto prioriza automatización, bajo costo, claridad narrativa y archivos intermedios cacheados para no repetir llamadas caras.
+
+## Qué Genera
+
+- Texto limpio extraído desde PDF.
+- Chunks del libro.
+- Resúmenes por chunk con memoria acumulada.
+- Resumen maestro del libro.
+- Guion narrativo en español neutro.
+- Estructura visual por secciones.
+- Audio TTS con una sola voz.
+- Subtítulos SRT desde el audio real o aproximados.
+- Video MP4 1920x1080 apto para YouTube.
+- Miniatura generada con IA visual y texto superpuesto legible.
+- Metadata de YouTube generada con IA: título, descripción, tags y badge.
+- Upload a YouTube mediante OAuth.
 
 ## Instalación
 
@@ -13,13 +28,15 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-También necesitas `ffmpeg` instalado para concatenar audio y renderizar video:
+También necesitas `ffmpeg`:
 
 ```bash
 brew install ffmpeg
 ```
 
 ## Configuración
+
+Copia el archivo de entorno:
 
 ```bash
 cp .env.example .env
@@ -30,179 +47,53 @@ Edita `.env`:
 ```bash
 OPENAI_API_KEY=tu_clave
 ELEVENLABS_API_KEY=
+YOUTUBE_CLIENT_SECRETS_FILE=input/youtube_client_secret.json
+YOUTUBE_TOKEN_FILE=output/youtube_token.json
 ```
 
-Revisa `config.yaml` para cambiar modelos, voz, duración objetivo, FPS, resolución, proveedor TTS y subtítulos.
+La configuración principal vive en `config.yaml`.
 
-Para música de fondo, coloca un archivo autorizado en `input/music.mp3` y activa:
+## Uso Rápido
 
-```yaml
-enable_background_music: true
-background_music_path: input/music.mp3
-background_music_volume_db: -34
-music_fade_seconds: 4
-```
-
-El estilo de narración TTS se controla con:
-
-```yaml
-tts_instructions: "Leé este texto con estilo de audiolibro: voz cálida, ritmo pausado y natural..."
-```
-
-Por defecto el video debe quedar entre 10 y 20 minutos:
-
-```yaml
-min_video_duration_minutes: 10
-target_duration_minutes: 20
-max_video_duration_minutes: 20
-openai_max_output_tokens_script: 12000
-```
-
-## Uso rápido
-
-Coloca un PDF en `input/book.pdf` y ejecuta:
+Coloca un PDF en `input/book.pdf` y genera el video:
 
 ```bash
 python src/main.py --pdf input/book.pdf --title "Nombre del libro" --duration 20
 ```
 
-Para generar todo desde el PDF y subirlo a YouTube en una sola orden:
+Generar todo desde un PDF y subir a YouTube:
 
 ```bash
 python src/main.py publish --pdf input/book.pdf --title "Nombre del libro" --duration 20
 ```
 
-Para probar ese flujo completo sin publicar:
+Probar el flujo completo sin publicar:
 
 ```bash
 python src/main.py publish --pdf input/book.pdf --title "Nombre del libro" --duration 20 --youtube-dry-run
 ```
 
-Para generar solo un preview de 1 minuto:
+Regenerar todo ignorando caches:
 
 ```bash
-python src/main.py render --title "Nombre del libro" --preview-seconds 60 --force
+python src/main.py publish --pdf input/book.pdf --title "Nombre del libro" --duration 20 --force
 ```
 
-Ese comando guarda `output/video/preview_60s.mp4` y no pisa el video final.
+## Comandos
 
-Salida esperada:
-
-- `output/text/book_clean.txt`
-- `output/text/chunks/chunk_001.txt`
-- `output/summaries/chunk_summaries.json`
-- `output/summaries/master_summary.json`
-- `output/scripts/final_script.txt`
-- `output/scripts/final_script.json`
-- `output/scripts/visual_production.json`
-- `output/audio/narration.mp3`
-- `output/subtitles/subtitles.srt`
-- `output/video/final_video.mp4`
-
-## Subir a YouTube
-
-Primero instala las dependencias nuevas:
+Pipeline completa sin subir:
 
 ```bash
-pip install -r requirements.txt
+python src/main.py all --pdf input/book.pdf --title "Nombre del libro" --duration 20
 ```
 
-Configura OAuth de YouTube:
-
-1. Crea un proyecto en Google Cloud.
-2. Habilita YouTube Data API v3.
-3. Crea credenciales OAuth de tipo Desktop app.
-4. Descarga el JSON y guárdalo como `input/youtube_client_secret.json`.
-5. Revisa `.env`:
+Pipeline completa con upload:
 
 ```bash
-YOUTUBE_CLIENT_SECRETS_FILE=input/youtube_client_secret.json
-YOUTUBE_TOKEN_FILE=output/youtube_token.json
+python src/main.py publish --pdf input/book.pdf --title "Nombre del libro" --duration 20
 ```
 
-La metadata de YouTube se genera con IA desde `master_summary.json` y `final_script.txt`, y se guarda en:
-
-```bash
-output/scripts/youtube_metadata.json
-```
-
-Para generar/revisar la metadata sin subir:
-
-```bash
-python src/main.py youtube --title "12 reglas para vivir" --youtube-dry-run
-```
-
-Usa `--force` para regenerar esa metadata con IA:
-
-```bash
-python src/main.py youtube --title "12 reglas para vivir" --youtube-dry-run --force
-```
-
-Para subir el video final:
-
-```bash
-python src/main.py youtube --title "12 reglas para vivir"
-```
-
-Para generar/reutilizar toda la pipeline y subir al final:
-
-```bash
-python src/main.py publish --pdf input/book.pdf --title "12 reglas para vivir" --duration 20
-```
-
-El comando `youtube` también genera `output/video/thumbnail.jpg` y la aplica al video después de subirlo. La miniatura usa IA para crear un fondo relacionado con el contenido del video y luego superpone el título con tipografía real para que sea legible.
-
-Para generar solo la miniatura:
-
-```bash
-python src/main.py thumbnail --title "12 reglas para vivir" --force
-```
-
-Por defecto se guarda también el prompt usado para la imagen en:
-
-```bash
-output/video/thumbnail_prompt.json
-```
-
-Si la API de imágenes falla, el sistema usa una plantilla local como fallback para no romper la pipeline.
-
-Opciones útiles:
-
-```bash
-python src/main.py youtube \
-  --youtube-title "12 reglas para vivir | Resumen narrado en español" \
-  --youtube-description "Descripción personalizada..." \
-  --youtube-tags "libros,Jordan Peterson,desarrollo personal,audiolibro" \
-  --privacy-status unlisted
-```
-
-La configuración base vive en `config.yaml`:
-
-```yaml
-youtube_privacy_status: unlisted
-youtube_category_id: "27"
-youtube_default_language: es
-youtube_made_for_kids: false
-youtube_license: youtube
-thumbnail_use_ai: true
-thumbnail_image_model: gpt-image-1.5
-thumbnail_image_quality: medium
-thumbnail_image_size: 1536x1024
-thumbnail_text_source: thumbnail_text
-```
-
-Si el guion o el audio quedaron demasiado cortos en una corrida anterior, regenera desde el guion:
-
-```bash
-python src/main.py script --title "Nombre del libro" --duration 20 --force
-python src/main.py tts --force
-python src/main.py subtitles --force
-python src/main.py render --title "Nombre del libro" --force
-```
-
-Si el modelo devuelve un guion corto, el paso `script` reintenta y luego expande sección por sección con metas de palabras propias hasta acercarse al rango configurado.
-
-## Pasos individuales
+Pasos individuales:
 
 ```bash
 python src/main.py extract --pdf input/book.pdf
@@ -211,80 +102,336 @@ python src/main.py script --title "Nombre del libro" --duration 20
 python src/main.py tts
 python src/main.py subtitles
 python src/main.py render --title "Nombre del libro"
+python src/main.py thumbnail --title "Nombre del libro"
+python src/main.py youtube --title "Nombre del libro"
 ```
 
-Usa `--force` para regenerar un paso aunque ya exista el archivo intermedio:
+Usa `--force` para regenerar aunque existan archivos cacheados:
 
 ```bash
 python src/main.py script --title "Nombre del libro" --force
 ```
 
-## Costos estimados
+## Preview De 1 Minuto
 
-Los costos dependen del largo del PDF, los modelos configurados y la duración del audio. El diseño intenta minimizarlos así:
+Para revisar cómo va quedando el video sin renderizar todo:
 
-- modelo económico para resúmenes por chunk
-- memoria acumulada entre chunks para conservar continuidad sin sumar otra llamada por fragmento
-- modelo mejor solo para resumen maestro y guion final
-- archivos intermedios cacheados
-- TTS no se regenera si el guion y la voz no cambiaron
-- sin imágenes IA por defecto
-
-Para bajar costos, reduce `chunk_size_chars`, usa modelos más económicos o ejecuta solo los pasos que necesites.
-
-## Memoria entre chunks
-
-Cada resumen de chunk recibe un contexto acumulado de los resúmenes anteriores. Esto ayuda a detectar continuidad de capítulos, ideas que se desarrollan en varias secciones y matices que aparecerían cortados si cada fragmento se leyera aislado.
-
-Puedes ajustar el tamaño de esa memoria en `config.yaml`:
-
-```yaml
-rolling_context_max_chars: 6000
+```bash
+python src/main.py render --title "Nombre del libro" --preview-seconds 60 --force
 ```
 
-## Subtítulos y alineación
+Salida:
 
-La pipeline siempre genera primero el audio TTS y después los subtítulos. Hay tres modos:
+```bash
+output/video/preview_60s.mp4
+```
 
-- `approximate`: fallback barato; reparte frases del guion según la duración real del audio.
-- `faster_whisper`: transcribe el audio real y genera SRT por segmentos.
-- `whisperx`: transcribe el audio real, alinea palabras y agrupa word-level timestamps en bloques SRT.
+El preview no pisa `output/video/final_video.mp4`.
 
-Config recomendado para mejor sincronización:
+## Salidas
+
+La pipeline genera:
+
+```bash
+output/text/book_clean.txt
+output/text/chunks/chunk_001.txt
+output/summaries/chunk_summaries.json
+output/summaries/master_summary.json
+output/scripts/final_script.txt
+output/scripts/final_script.json
+output/scripts/visual_production.json
+output/scripts/youtube_metadata.json
+output/audio/narration.mp3
+output/subtitles/subtitles.srt
+output/video/final_video.mp4
+output/video/thumbnail.jpg
+output/video/thumbnail_ai_background.png
+output/video/thumbnail_prompt.json
+```
+
+`output/` está ignorado por Git porque contiene artefactos generados, audio, video, tokens y archivos pesados.
+
+## YouTube
+
+La subida usa OAuth, no una API key simple.
+
+Pasos en Google Cloud:
+
+1. Crea un proyecto en Google Cloud.
+2. Habilita **YouTube Data API v3**.
+3. Configura **OAuth consent screen**.
+4. Crea credenciales OAuth tipo **Desktop app**.
+5. Descarga el JSON como:
+
+```bash
+input/youtube_client_secret.json
+```
+
+6. Si la app está en modo Testing, agrega tu Gmail en **OAuth consent screen** → **Audience/Test users**.
+
+Si ves este error:
+
+```text
+Error 403: access_denied
+La app se está probando y solo pueden acceder testers aprobados
+```
+
+significa que el email con el que intentas autorizar no está agregado como tester.
+
+Dry-run de YouTube:
+
+```bash
+python src/main.py youtube --title "Nombre del libro" --youtube-dry-run
+```
+
+Subir el video final ya generado:
+
+```bash
+python src/main.py youtube --title "Nombre del libro"
+```
+
+Generar todo y subir:
+
+```bash
+python src/main.py publish --pdf input/book.pdf --title "Nombre del libro" --duration 20
+```
+
+Opciones útiles:
+
+```bash
+python src/main.py youtube \
+  --youtube-title "Título personalizado" \
+  --youtube-description "Descripción personalizada..." \
+  --youtube-tags "libros,audiolibro,resumen de libros" \
+  --privacy-status unlisted
+```
+
+Privacidad por defecto:
+
+```yaml
+youtube_privacy_status: unlisted
+youtube_category_id: "27"
+youtube_default_language: es
+youtube_made_for_kids: false
+youtube_license: youtube
+```
+
+Después de la primera autorización, el token queda en:
+
+```bash
+output/youtube_token.json
+```
+
+## Miniaturas IA
+
+Las miniaturas se generan con IA en dos capas:
+
+1. La IA genera el fondo visual relacionado con el libro.
+2. Python superpone el título con tipografía real para evitar texto deformado.
+
+Comando:
+
+```bash
+python src/main.py thumbnail --title "Nombre del libro" --force
+```
+
+Archivos:
+
+```bash
+output/video/thumbnail.jpg
+output/video/thumbnail_ai_background.png
+output/video/thumbnail_prompt.json
+```
+
+Configuración:
+
+```yaml
+thumbnail_use_ai: true
+thumbnail_image_model: gpt-image-1.5
+thumbnail_image_quality: medium
+thumbnail_image_size: 1536x1024
+thumbnail_text_source: thumbnail_text
+thumbnail_width: 1280
+thumbnail_height: 720
+```
+
+El prompt de miniatura recibe contexto del libro:
+
+- tesis central
+- tono sugerido
+- ejemplos prácticos
+- matices
+- estructura del video
+- ideas principales
+
+También evita explícitamente fondos de destrucción:
+
+- sin ruinas
+- sin explosiones
+- sin fuego
+- sin humo denso
+- sin ciudades apocalípticas
+- sin monstruos, dragones, calaveras o fantasía épica
+
+Si la API de imágenes falla, el sistema usa una plantilla local como fallback para no romper la pipeline.
+
+## Guion Y Duración
+
+Por defecto apunta a un video entre 10 y 20 minutos:
+
+```yaml
+min_video_duration_minutes: 10
+target_duration_minutes: 20
+max_video_duration_minutes: 20
+words_per_minute: 150
+openai_max_output_tokens_script: 12000
+```
+
+El paso `script` reintenta si el guion queda corto y luego expande sección por sección.
+
+Para regenerar desde el guion si algo quedó corto:
+
+```bash
+python src/main.py script --title "Nombre del libro" --duration 20 --force
+python src/main.py tts --force
+python src/main.py subtitles --force
+python src/main.py render --title "Nombre del libro" --force
+```
+
+## TTS
+
+El TTS usa una sola voz para todo el guion.
+
+Configuración actual:
+
+```yaml
+tts_provider: openai
+tts_model: gpt-4o-mini-tts
+tts_voice: echo
+tts_instructions: "Leé este texto con estilo de audiolibro: voz cálida, ritmo pausado y natural, buena dicción, pausas expresivas y tono envolvente. Narrá como si estuvieras contando una historia íntima, con emoción sutil y sin sobreactuar."
+```
+
+Hay una interfaz base `TTSProvider` y un placeholder para ElevenLabs.
+
+## Música
+
+La pipeline puede mezclar música de fondo local. Debe ser un archivo autorizado por ti.
+
+```yaml
+enable_background_music: true
+background_music_path: input/music.mp3
+background_music_volume_db: -34
+music_fade_seconds: 4
+```
+
+No descarga música desde YouTube ni desde fuentes no autorizadas.
+
+## Subtítulos
+
+La pipeline genera primero el audio TTS y después los subtítulos.
+
+Modos:
+
+- `approximate`: divide el guion por frases y distribuye según duración real del audio.
+- `faster_whisper`: transcribe el audio real por segmentos.
+- `whisperx`: transcribe y alinea palabras para SRT más preciso.
+
+Config recomendada:
 
 ```yaml
 subtitle_alignment_mode: whisperx
+whisperx_model: small
+whisperx_device: cpu
+whisperx_compute_type: int8
+whisperx_batch_size: 8
 ```
 
-WhisperX es opcional porque instala dependencias pesadas como PyTorch y modelos de alineación. Si no lo tienes instalado, el comando fallará con una instrucción clara:
+Si WhisperX no está instalado, usa:
 
 ```bash
 pip install whisperx
 ```
 
-La opción antigua sigue funcionando:
+Fallback barato:
 
 ```yaml
-use_whisper_subtitles: true
+subtitle_alignment_mode: approximate
 ```
 
-Eso equivale a `subtitle_alignment_mode: faster_whisper`.
+## Memoria Entre Chunks
 
-## Limitaciones del MVP
+Cada resumen de chunk recibe contexto acumulado de resúmenes anteriores. Esto ayuda cuando un capítulo desarrolla ideas conectadas en varias partes.
+
+```yaml
+chunk_size_chars: 32000
+rolling_context_max_chars: 6000
+```
+
+## Costos
+
+El diseño reduce costos así:
+
+- modelo barato para resúmenes por chunk
+- modelo mejor solo para guion y piezas editoriales importantes
+- caches para texto, resúmenes, guion, audio, subtítulos, video y miniatura
+- TTS no se regenera si el guion y la voz no cambian
+- miniaturas IA separadas del render de video
+- previews cortos para revisar antes de renderizar todo
+
+## Git Y Seguridad
+
+No subas secretos ni artefactos pesados.
+
+El `.gitignore` excluye:
+
+```bash
+.env
+.venv/
+input/*.pdf
+input/youtube_client_secret.json
+input/music.mp3
+output/
+```
+
+Para pushear el repo:
+
+```bash
+git init
+git branch -M main
+git add -A
+git commit -m "Initial MVP for Leer con la Oreja"
+git remote add origin https://github.com/aguslopezleg/leerconlaoreja.git
+git push -u origin main
+```
+
+Si usas SSH y ves:
+
+```text
+Permission denied (publickey)
+```
+
+cambia el remoto a HTTPS:
+
+```bash
+git remote set-url origin https://github.com/aguslopezleg/leerconlaoreja.git
+git push -u origin main
+```
+
+## Limitaciones
 
 - Si el PDF es escaneado y no tiene texto seleccionable, necesitas OCR antes.
 - La limpieza de headers/footers es heurística.
-- La visualización de audio es simple y reutilizable.
+- La visualización de audio es simple.
 - ElevenLabs está preparado como interfaz, pero no implementado.
-- La sincronización perfecta de subtítulos requiere `subtitle_alignment_mode: whisperx`.
-- El render rechaza audios fuera del rango `min_video_duration_minutes` / `max_video_duration_minutes`.
-- El render prioriza estabilidad local sobre diseño complejo.
+- La sincronización más precisa requiere WhisperX.
+- El render rechaza audios fuera del rango configurado de duración.
+- Las miniaturas IA pueden requerir varios intentos para lograr el tono exacto.
 
-## Próximos pasos sugeridos
+## Próximos Pasos
 
 - Agregar OCR opcional con Tesseract.
 - Implementar `ElevenLabsTTSProvider`.
 - Mejorar detección de capítulos.
 - Generar waveform real desde amplitud del audio.
 - Agregar plantillas visuales por tipo de libro.
-- Añadir tests unitarios para limpieza, chunking y SRT.
+- Añadir tests unitarios para limpieza, chunking, SRT y metadata.
