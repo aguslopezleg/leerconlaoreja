@@ -51,7 +51,8 @@ scheduler_queue_dir: input/queue
 scheduler_interval_days: 3
 scheduler_publish_time: "09:00"
 scheduler_default_publish: true
-telegram_notifications_enabled: false
+telegram_notifications_enabled: true
+telegram_pdf_inbox_dir: input/telegram
 youtube_tags:
   - libros
   - audiolibro

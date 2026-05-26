@@ -231,6 +231,8 @@ El administrador puede avisar por Telegram cuando:
 - falla un trabajo
 - se actualiza el plan editorial
 
+También puede recibir PDFs por Telegram, agregarlos a la cola y procesarlos.
+
 Crea un bot con BotFather y configura `.env`:
 
 ```bash
@@ -242,12 +244,46 @@ Activa notificaciones:
 
 ```yaml
 telegram_notifications_enabled: true
+telegram_pdf_inbox_dir: input/telegram
 ```
 
 Prueba el bot:
 
 ```bash
 python src/main.py telegram-test
+```
+
+Para recibir PDFs enviados al bot y procesarlos:
+
+```bash
+python src/main.py telegram-poll
+```
+
+Ese comando:
+
+1. Lee mensajes nuevos del bot.
+2. Acepta solo archivos PDF del `TELEGRAM_CHAT_ID` configurado.
+3. Descarga el PDF en `input/telegram/`.
+4. Crea un trabajo inmediato en `output/scheduler/jobs.json`.
+5. Ejecuta el scheduler para generar y subir el video.
+6. Notifica por Telegram si quedó listo o si falló.
+
+Para probar sin subir a YouTube:
+
+```bash
+python src/main.py telegram-poll --youtube-dry-run
+```
+
+Para recibir PDFs pero generar video sin publicar:
+
+```bash
+python src/main.py telegram-poll --schedule-no-publish
+```
+
+Cron recomendado cada 10 minutos:
+
+```cron
+*/10 * * * * cd /ruta/a/notebook_style_video && .venv/bin/python src/main.py telegram-poll >> output/telegram/cron.log 2>&1
 ```
 
 ## Preview De 1 Minuto

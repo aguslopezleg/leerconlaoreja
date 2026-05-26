@@ -22,6 +22,7 @@ from scheduler import (
     reset_failed_jobs,
 )
 from summarize import create_master_summary, summarize_chunks
+from telegram_inbox import poll_telegram_pdfs
 from telegram_notify import send_telegram
 from upload_youtube import generate_youtube_metadata_with_ai, upload_video_to_youtube
 from utils import file_info, format_duration, log, ensure_dirs, load_config, project_root, timed, word_count
@@ -45,6 +46,7 @@ STEPS = {
     "schedule-run",
     "schedule-tick",
     "schedule-reset-failed",
+    "telegram-poll",
     "telegram-test",
 }
 
@@ -364,7 +366,7 @@ def log_outputs(command: str, paths: Paths, preview_seconds: float | None = None
         log(f"{label}: {file_info(paths.video_dir / 'final_video.mp4')}")
         log(f"Miniatura usada: {file_info(project_root() / 'output' / 'video' / 'thumbnail.jpg')}")
         return
-    if command.startswith("schedule") or command == "telegram-test":
+    if command.startswith("schedule") or command.startswith("telegram"):
         return
 
     log(f"Salidas principales: guion={file_info(paths.scripts_dir / 'final_script.txt')}")
@@ -491,6 +493,14 @@ def main() -> int:
                 log("Telegram test enviado.")
             else:
                 log("Telegram no está habilitado o no pudo enviarse.", level="WARN")
+        elif args.command == "telegram-poll":
+            poll_telegram_pdfs(
+                config,
+                publish=not args.schedule_no_publish,
+                youtube_dry_run=args.youtube_dry_run,
+                force=args.force,
+            )
+            run_scheduler(config, args.schedule_limit, due_only=True)
         else:
             run_full_pipeline(paths, config, title, args.force, publish=False, preview_seconds=args.preview_seconds)
         elapsed = time.perf_counter() - started

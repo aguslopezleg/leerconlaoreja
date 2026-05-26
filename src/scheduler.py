@@ -38,6 +38,10 @@ def _pdf_fingerprint(path: Path) -> str:
     return sha256_text(f"{path.resolve()}:{stat.st_size}:{int(stat.st_mtime)}")
 
 
+def pdf_fingerprint(path: Path) -> str:
+    return _pdf_fingerprint(path)
+
+
 def _title_from_pdf(path: Path) -> str:
     return path.stem.replace("-", " ").replace("_", " ").strip().title()
 
@@ -102,6 +106,7 @@ def add_job(
     youtube_tags: str | None = None,
     scheduled_for: datetime | None = None,
     output_root: str | None = None,
+    pdf_fingerprint: str | None = None,
 ) -> ScheduledJob:
     state = load_scheduler_state()
     job = ScheduledJob(
@@ -110,6 +115,7 @@ def add_job(
         title=title,
         duration=duration,
         scheduled_for=scheduled_for,
+        pdf_fingerprint=pdf_fingerprint,
         output_root=output_root,
         publish=publish,
         youtube_dry_run=youtube_dry_run,
@@ -119,6 +125,8 @@ def add_job(
         youtube_description=youtube_description,
         youtube_tags=youtube_tags,
     )
+    if not job.output_root:
+        job.output_root = f"output/jobs/{job.job_id}"
     state.jobs.append(job)
     state_path = save_scheduler_state(state)
     log(f"Trabajo agregado: {job.job_id} | {job.title} | {job.pdf}")

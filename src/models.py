@@ -63,6 +63,7 @@ class Config(BaseModel):
     scheduler_publish_time: str = "09:00"
     scheduler_default_publish: bool = True
     telegram_notifications_enabled: bool = False
+    telegram_pdf_inbox_dir: str = "input/telegram"
     youtube_tags: list[str] = Field(
         default_factory=lambda: [
             "libros",
